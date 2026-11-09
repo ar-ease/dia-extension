@@ -5,6 +5,11 @@
   "description": "Arc-style command bar with search keywords (yt, gh, w...). Ctrl+Opt+(Shift+)O.",
   "permissions": ["tabs", "history", "bookmarks", "search", "favicon"],
   "background": { "service_worker": "background.js" },
-  "content_scripts": [{ "matches": ["<all_urls>"], "js": ["content.js"] }],
+  "content_scripts": [{ "matches": ["<all_urls>"], "js": ["engines.js", "content.js"] }],
+  "commands": {
+    "open-new": { "suggested_key": { "default": "Alt+Shift+O" }, "description": "Omnibar in NEW tab" },
+    "toggle-full": { "suggested_key": { "default": "MacCtrl+D" }, "description": "Toggle full screen (hides the top bar)" },
+    "open-here": { "suggested_key": { "default": "Alt+O" }, "description": "Omnibar in CURRENT tab" }
+  },
   "web_accessible_resources": [{ "resources": ["_favicon/*"], "matches": ["<all_urls>"] }]
 }

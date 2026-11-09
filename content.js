@@ -15,7 +15,10 @@ function open(newTab) {
     .g{height:14px;cursor:grab;display:flex;justify-content:center;align-items:flex-end}
     .g:active{cursor:grabbing}
     .g::after{content:'';width:32px;height:3px;border-radius:2px;background:var(--line)}
-    input{all:unset;box-sizing:border-box;width:100%;padding:6px 18px 14px;font-size:16px;color:var(--fg)}
+    .row{display:flex;align-items:center;gap:10px;padding:6px 18px 14px}
+    .chip{flex:none;background:var(--sel);border-radius:6px;padding:3px 9px;font-size:13px;font-weight:500}
+    .chip[hidden]{display:none}
+    input{all:unset;box-sizing:border-box;flex:1;min-width:0;font-size:16px;color:var(--fg)}
     input::placeholder{color:var(--dim)}
     #l{padding:6px;max-height:50vh;overflow:auto;border-top:.5px solid var(--line)}
     #l:empty{display:none}
@@ -26,9 +29,18 @@ function open(newTab) {
     .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .t small{color:var(--dim);margin-left:8px;font-size:12px}
     .h{color:var(--dim);font-size:11.5px;flex:none}
-  </style><div class="back"><div class="box"><div class="g"></div><input placeholder="${newTab ? "Search or enter URL…" : "Edit URL or search…"}"><div id="l"></div></div></div>`;
-  const input = root.querySelector("input"), list = root.getElementById("l");
-  let items = [], sel = 0;
+  </style><div class="back"><div class="box"><div class="g"></div><div class="row"><span class="chip" hidden></span><input></div><div id="l"></div></div></div>`;
+  const input = root.querySelector("input"), list = root.getElementById("l"), chip = root.querySelector(".chip");
+  let items = [], sel = 0, engine = null; // engine: active search keyword, shown as a chip
+  const base = newTab ? "Search or enter URL…" : "Edit URL or search…";
+  const full = () => (engine ? engine + " " : "") + input.value.trim();
+  const setEngine = (k) => {
+    engine = k;
+    chip.hidden = !k;
+    chip.textContent = k ? ENGINES[k][0] : "";
+    input.placeholder = k ? `Search ${ENGINES[k][0]}…` : base;
+  };
+  setEngine(null);
 
   const render = () => {
     list.replaceChildren(...items.map((it, i) => {
@@ -59,19 +71,33 @@ function open(newTab) {
   };
   const close = () => (host?.remove(), (host = null));
   const go = (item) => {
-    chrome.runtime.sendMessage({ type: "go", item, text: input.value.trim(), newTab });
+    if (engine && !input.value.trim()) return; // chip with no query yet
+    chrome.runtime.sendMessage({ type: "go", item, text: full(), newTab });
     close();
   };
   const move = (d) => items.length && ((sel = (sel + d + items.length) % items.length), render());
 
-  input.oninput = () =>
-    chrome.runtime.sendMessage({ type: "suggest", q: input.value.trim() }, (r) => {
-      items = r || []; sel = input.value.trim() ? 0 : -1; render();
+  input.oninput = () => {
+    if (engine && !input.value.trim()) return ((items = []), (sel = -1), render());
+    chrome.runtime.sendMessage({ type: "suggest", q: full() }, (r) => {
+      items = r || []; sel = full() ? 0 : -1; render();
     });
+  };
   input.onkeydown = (e) => {
     e.stopPropagation(); // keep page hotkeys out
     const k = e.key, c = e.ctrlKey;
-    if (k === "Escape") close();
+    const word = input.value.trim();
+    if ((k === " " || k === "Tab") && !engine && ENGINES[word] && input.value === word) {
+      e.preventDefault(); // "yt" + space/tab -> chip
+      input.value = "";
+      setEngine(word);
+      input.oninput();
+    } else if (k === "Backspace" && engine && !input.value) {
+      e.preventDefault(); // backspace on empty input removes the chip, keeps the keyword as text
+      input.value = engine;
+      setEngine(null);
+      input.oninput();
+    } else if (k === "Escape") close();
     else if (k === "Enter") go(items[sel]);
     else if (k === "ArrowDown" || (k === "Tab" && !e.shiftKey) || (c && (k === "n" || k === "j"))) (e.preventDefault(), move(1));
     else if (k === "ArrowUp" || (k === "Tab" && e.shiftKey) || (c && (k === "p" || k === "k"))) (e.preventDefault(), move(-1));
@@ -105,3 +131,5 @@ addEventListener("keydown", (e) => {
     open(e.shiftKey);
   }
 }, true);
+
+chrome.runtime.onMessage.addListener((m) => m.type === "open" && open(m.newTab));
